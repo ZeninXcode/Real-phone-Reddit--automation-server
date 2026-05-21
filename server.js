@@ -13,20 +13,20 @@ app.use(express.json());
 const phones = new Map();
 const dashboards = new Set();
 
-wss.on('connection', (ws) => {
-  let clientType = null;
-  let clientId = null;
+wss.on('connection', function(ws) {
+  var clientType = null;
+  var clientId = null;
 
-  ws.on('message', (raw) => {
-    let msg;
-    try { msg = JSON.parse(raw); } catch { return; }
+  ws.on('message', function(raw) {
+    var msg;
+    try { msg = JSON.parse(raw); } catch(e) { return; }
 
     if (!clientType) {
       if (msg.type === 'register_phone') {
         clientType = 'phone';
-        clientId = msg.phoneId || phone_${Date.now()};
+        clientId = msg.phoneId ? msg.phoneId : 'phone_' + Date.now();
         phones.set(clientId, ws);
-        console.log(📱 Phone connected: ${clientId});
+        console.log('Phone connected: ' + clientId);
         ws.send(JSON.stringify({ type: 'registered', phoneId: clientId }));
         broadcastToDashboards({ type: 'phone_connected', phoneId: clientId });
       } else if (msg.type === 'register_dashboard') {
@@ -38,11 +38,12 @@ wss.on('connection', (ws) => {
     }
 
     if (clientType === 'phone') {
-      broadcastToDashboards({ ...msg, phoneId: clientId });
+      msg.phoneId = clientId;
+      broadcastToDashboards(msg);
     }
 
     if (clientType === 'dashboard') {
-      const targetPhone = phones.get(msg.phoneId);
+      var targetPhone = phones.get(msg.phoneId);
       if (targetPhone && targetPhone.readyState === WebSocket.OPEN) {
         targetPhone.send(JSON.stringify(msg));
       } else {
@@ -51,7 +52,7 @@ wss.on('connection', (ws) => {
     }
   });
 
-  ws.on('close', () => {
+  ws.on('close', function() {
     if (clientType === 'phone') {
       phones.delete(clientId);
       broadcastToDashboards({ type: 'phone_disconnected', phoneId: clientId });
@@ -62,31 +63,33 @@ wss.on('connection', (ws) => {
 });
 
 function broadcastToDashboards(data) {
-  const msg = JSON.stringify(data);
-  dashboards.forEach((ws) => {
+  var msg = JSON.stringify(data);
+  dashboards.forEach(function(ws) {
     if (ws.readyState === WebSocket.OPEN) ws.send(msg);
   });
 }
 
-app.get('/', (req, res) => {
+app.get('/', function(req, res) {
   res.json({ status: 'online', phones: phones.size, dashboards: dashboards.size });
 });
 
-app.get('/phones', (req, res) => {
+app.get('/phones', function(req, res) {
   res.json({ phones: Array.from(phones.keys()) });
 });
 
-app.post('/command', (req, res) => {
-  const { phoneId, command, params } = req.body;
-  const phone = phones.get(phoneId);
+app.post('/command', function(req, res) {
+  var phoneId = req.body.phoneId;
+  var command = req.body.command;
+  var params = req.body.params;
+  var phone = phones.get(phoneId);
   if (!phone || phone.readyState !== WebSocket.OPEN) {
     return res.status(404).json({ error: 'Phone not connected' });
   }
-  phone.send(JSON.stringify({ type: 'command', command, params }));
+  phone.send(JSON.stringify({ type: 'command', command: command, params: params }));
   res.json({ success: true });
 });
 
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(🚀 Server running on port ${PORT});
+var PORT = process.env.PORT || 3000;
+server.listen(PORT, function() {
+  console.log('Server running on port ' + PORT);
 });
